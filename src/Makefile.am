@@ -1,7 +1,8 @@
 AUTOMAKE_OPTIONS = subdir-objects
 
 sbin_PROGRAMS = powertop
-nodist_powertop_SOURCES = css.h
+lib_LTLIBRARIES = libpowertop.la
+nodist_libpowertop_la_SOURCES = css.h
 
 powertop_SOURCES = \
 	css.h \
@@ -133,6 +134,10 @@ powertop_SOURCES = \
 	wakeup/wakeup.h \
 	wakeup/wakeup_ethernet.h
 
+libpowertop_la_SOURCES = $(powertop_SOURCES) \
+	lib/lib.h \
+	lib/lib.cpp
+
 powertop_CXXFLAGS = \
 	-Wall \
 	-Wformat \
@@ -145,6 +150,8 @@ powertop_CXXFLAGS = \
 	$(PCIUTILS_CFLAGS) \
 	$(PTHREAD_CFLAGS)
 
+libpowertop_la_CXXFLAGS = $(powertop_CXXFLAGS) -DCONF_LIB
+
 
 powertop_CPPFLAGS = \
 	-DLOCALEDIR=\"$(localedir)\" \
@@ -155,8 +162,12 @@ powertop_CPPFLAGS = \
 	$(PCIUTILS_CFLAGS) \
 	$(PTHREAD_CFLAGS)
 
+libpowertop_la_CPPFLAGS = $(powertop_CPPFLAGS)
+
 powertop_LDADD = \
 	../traceevent/libtraceevnet.la
+
+libpowertop_la_LIBADD = $(powertop_LDADD)
 
 AM_LDFLAGS = \
 	$(LIBNL_LIBS) \

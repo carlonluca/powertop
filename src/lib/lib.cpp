@@ -1,5 +1,5 @@
 /*
- * Copyright 2010, Intel Corporation
+ * Copyright 2019 Luca Carlon <carlon.luca@gmail.com>
  *
  * This file is part of PowerTOP
  *
@@ -18,18 +18,15 @@
  * 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301 USA
  * or just google for it.
- *
- * Authors:
- *	Arjan van de Ven <arjan@linux.intel.com>
  */
-#ifndef __INCLUDE_GUARD_CALIBRATE_H
-#define __INCLUDE_GUARD_CALIBRATE_H
 
-#include <functional>
+#include "lib.h"
 
-extern bool one_measurement(int seconds, int sample_interval, char *workload, std::function<bool()> interrupt);
-extern bool one_measurement(int seconds, int sample_interval, char *workload);
-extern void calibrate(void);
+printf_ptr log_f = nullptr;
+cb_data data_ready = nullptr;
 
-
-#endif
+void init_powertop_lib(printf_ptr f, cb_data _data_ready)
+{
+	log_f = f;
+    data_ready = _data_ready;
+}

@@ -45,6 +45,7 @@
 #include "perf/perf.h"
 #include "perf/perf_bundle.h"
 #include "lib.h"
+#include "lib/lib.h"
 #include "../config.h"
 
 
@@ -137,20 +138,32 @@ static void print_usage()
 	printf("%s\n\n", _("For more help please refer to the 'man 8 powertop'"));
 }
 
-static void do_sleep(int seconds)
+static bool do_sleep(int seconds, std::function<bool()> interrupted)
 {
-	time_t target;
-	int delta;
+#ifdef CONF_LIB
+	for (int i = 0; i < seconds*2; i++) {
+		usleep(1000*500);
+		if (interrupted())
+			return false;
+	}
+
+	return true;
+#endif
 
 	if (!ncurses_initialized()) {
 		sleep(seconds);
-		return;
+		return true;
 	}
+
+	time_t target;
+	int delta;
+
 	target = time(NULL) + seconds;
 	delta = seconds;
 	do {
 		int c;
 		usleep(6000);
+
 		halfdelay(delta * 10);
 
 		c = getch();
@@ -181,16 +194,16 @@ static void do_sleep(int seconds)
 			break;
 		case 's':
 			if (set_refresh_timeout())
-				return;
+				return true;
 			break;
 		case 'r':
 			window_refresh();
-			return;
+			return true;
 		case KEY_EXIT:
 		case 'q':
 		case 27:	// Escape
 			leave_powertop = 1;
-			return;
+			return true;
 		}
 
 		delta = target - time(NULL);
@@ -198,6 +211,8 @@ static void do_sleep(int seconds)
 			break;
 
 	} while (1);
+
+	return true;
 }
 
 extern "C" {
@@ -206,14 +221,15 @@ extern "C" {
 	{
 		int sleep_time = *((int *) arg);
 		while (!end_thread) {
-			do_sleep(sleep_time);
+			if (!do_sleep(sleep_time, []() -> bool { return false; }))
+				return 0;
 			global_sample_power();
 		}
 		return 0;
 	}
 }
 
-void one_measurement(int seconds, int sample_interval, char *workload)
+bool one_measurement(int seconds, int sample_interval, char *workload, std::function<bool()> interrupted)
 {
 	create_all_usb_devices();
 	start_power_measurement();
@@ -240,7 +256,8 @@ void one_measurement(int seconds, int sample_interval, char *workload)
 	} else {
 		while (seconds > 0)
 		{
-			do_sleep(sample_interval > seconds ? seconds : sample_interval);
+			if (!do_sleep(sample_interval > seconds ? seconds : sample_interval, interrupted))
+				return false;
 			seconds -= sample_interval;
 			global_sample_power();
 		}
@@ -281,6 +298,15 @@ void one_measurement(int seconds, int sample_interval, char *workload)
 	ahci_create_device_stats_table();
 	store_results(measurement_time);
 	end_cpu_data();
+
+	return true;
+}
+
+bool one_measurement(int seconds, int sample_interval, char *workload)
+{
+	return one_measurement(seconds, sample_interval, workload, []() -> bool {
+		return false;
+	});
 }
 
 void out_of_memory()
@@ -345,7 +371,7 @@ static int get_nr_open(void) {
 	return nr_open;
 }
 
-static void powertop_init(int auto_tune)
+void powertop_init(int auto_tune)
 {
 	static char initialized = 0;
 	int ret;
@@ -425,8 +451,7 @@ void clean_shutdown()
 	return;
 }
 
-
-int main(int argc, char **argv)
+int main_loop(int argc, char **argv, std::function<bool()> interrupt)
 {
 	int option_index;
 	int c;
@@ -514,6 +539,10 @@ int main(int argc, char **argv)
 		}
 	}
 
+#ifdef CONF_LIB
+	if (log_f)
+		log_f("init");
+#endif
 	powertop_init(auto_tune);
 
 	if (reporttype != REPORT_OFF)
@@ -522,10 +551,15 @@ int main(int argc, char **argv)
 	if (debug_learning)
 		printf("Learning debugging enabled\n");
 
+#ifdef CONF_LIB
+	if (log_f)
+		log_f("Load params");
+#endif
 	learn_parameters(250, 0);
 	save_parameters("saved_parameters.powertop");
 
 
+#ifndef CONF_LIB
 	if (debug_learning) {
 	        learn_parameters(1000, 1);
 		dump_parameter_bundle();
@@ -534,12 +568,22 @@ int main(int argc, char **argv)
 	}
 	if (!auto_tune)
 		init_display();
+#endif
 
+#ifdef CONF_LIB
+	if (log_f)
+		log_f("Init structs");
+#endif
 	initialize_devfreq();
 	initialize_tuning();
 	initialize_wakeup();
 	/* first one is short to not let the user wait too long */
-	one_measurement(1, sample_interval, NULL);
+#ifdef CONF_LIB
+	if (log_f)
+		log_f("Taking first measure");
+#endif
+	if (!one_measurement(1, sample_interval, NULL, interrupt))
+		goto end;
 
 	if (!auto_tune) {
 		tuning_update_display();
@@ -548,12 +592,19 @@ int main(int argc, char **argv)
 		auto_toggle_tuning();
 	}
 
-	while (!leave_powertop) {
+	while (!interrupt()) {
 		if (!auto_tune)
 			show_cur_tab();
-		one_measurement(time_out, sample_interval, NULL);
+#ifdef CONF_LIB
+		if (log_f)
+			log_f("Taking measure");
+#endif
+		if (!one_measurement(time_out, sample_interval, NULL, interrupt))
+			break;
 		learn_parameters(15, 0);
 	}
+
+end:
 	if (!auto_tune)
 		endwin();
 	fprintf(stderr, "%s\n", _("Leaving PowerTOP"));
@@ -569,9 +620,20 @@ int main(int argc, char **argv)
 	save_parameters("saved_parameters.powertop");
 	end_pci_access();
 	clear_tuning();
-	reset_display();
+	//reset_display();
 
 	clean_shutdown();
 
+#ifdef CONF_LIB
+	log_f("Cleaned up");
+#endif
+
 	return 0;
 }
+
+#ifndef CONF_LIB
+int main(int argc, char **argv)
+{
+	return main_loop(argc, argv, [] { return false; });
+}
+#endif

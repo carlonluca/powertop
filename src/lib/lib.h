@@ -1,5 +1,5 @@
 /*
- * Copyright 2010, Intel Corporation
+ * Copyright 2019 Luca Carlon <carlon.luca@gmail.com>
  *
  * This file is part of PowerTOP
  *
@@ -18,18 +18,24 @@
  * 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301 USA
  * or just google for it.
- *
- * Authors:
- *	Arjan van de Ven <arjan@linux.intel.com>
  */
-#ifndef __INCLUDE_GUARD_CALIBRATE_H
-#define __INCLUDE_GUARD_CALIBRATE_H
+
+#if !defined(EXT_LIB_H) && defined(CONF_LIB)
+#define EXT_LIB_H
 
 #include <functional>
 
-extern bool one_measurement(int seconds, int sample_interval, char *workload, std::function<bool()> interrupt);
-extern bool one_measurement(int seconds, int sample_interval, char *workload);
-extern void calibrate(void);
+#include "../process/powerconsumer.h"
+#include "../process/process.h"
 
+typedef void (*printf_ptr)(const char *str, ...);
+typedef void (*cb_data)(vector<power_consumer*> data);
 
-#endif
+void init_powertop_lib(printf_ptr f, cb_data data_ready);
+void format_watts(double W, char *buffer, unsigned int len);
+int main_loop(int argc, char **argv, std::function<bool()> interrupt);
+
+extern printf_ptr log_f;
+extern cb_data data_ready; 
+
+#endif // EXT_LIB_H

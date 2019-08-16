@@ -46,6 +46,7 @@
 #include "../parameters/parameters.h"
 #include "../display.h"
 #include "../measurement/measurement.h"
+#include "../lib/lib.h"
 
 static  class perf_bundle * perf_events;
 
@@ -782,6 +783,7 @@ double total_xwakes(void)
 	return total;
 }
 
+#ifndef CONF_LIB
 void process_update_display(void)
 {
 	unsigned int i;
@@ -888,6 +890,13 @@ void process_update_display(void)
 		wprintw(win, "%s  %s %s %s %s\n", power, usage, events, name, pretty_print(all_power[i]->description(), descr, 128));
 	}
 }
+#else
+void process_update_display(void)
+{
+	if (data_ready)
+		data_ready(all_power);
+}
+#endif
 
 void report_process_update_display(void)
 {
